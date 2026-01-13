@@ -4,10 +4,6 @@ export default function ArbitrageCard({ opportunity }) {
   const isProfitable = opportunity.is_profitable && opportunity.profit_percent > 0;
   const profitColor = isProfitable ? '#10b981' : '#ef4444';
 
-  // 순수 차익 색상
-  const pureArbitrageColor = opportunity.pure_arbitrage_percent > 0 ? '#10b981' :
-                             opportunity.pure_arbitrage_percent < 0 ? '#ef4444' : '#6b7280';
-
   return (
     <div style={{
       ...styles.card,
@@ -27,43 +23,42 @@ export default function ArbitrageCard({ opportunity }) {
               {opportunity.profit_percent > 0 ? '+' : ''}{opportunity.profit_percent.toFixed(4)}%
             </span>
           </div>
-          <div style={{...styles.pureBadge, borderColor: pureArbitrageColor}}>
-            <span style={{fontSize: '0.75rem', color: '#6b7280'}}>순수 차익: </span>
-            <span style={{fontSize: '0.875rem', fontWeight: 'bold', color: pureArbitrageColor}}>
-              {opportunity.pure_arbitrage_percent > 0 ? '+' : ''}{opportunity.pure_arbitrage_percent?.toFixed(4) || '0.0000'}%
-            </span>
-          </div>
         </div>
+      </div>
+
+      <div style={styles.actionBox}>
+        <span style={styles.actionLabel}>Trading Strategy:</span>
+        <span style={styles.actionValue}>{opportunity.action}</span>
       </div>
 
       <div style={styles.priceGrid}>
         <div style={styles.priceItem}>
-          <span style={styles.label}>Binance (USDT)</span>
-          <span style={styles.value}>${opportunity.binance_price_usd.toLocaleString()}</span>
+          <span style={styles.label}>{opportunity.buy_exchange} (Buy)</span>
+          <span style={styles.value}>${opportunity.buy_price_usd.toLocaleString()}</span>
         </div>
         <div style={styles.priceItem}>
-          <span style={styles.label}>Binance (KRW)</span>
-          <span style={styles.value}>₩{opportunity.binance_price_krw.toLocaleString()}</span>
+          <span style={styles.label}>{opportunity.sell_exchange} (Sell)</span>
+          <span style={styles.value}>${opportunity.sell_price_usd.toLocaleString()}</span>
         </div>
         <div style={styles.priceItem}>
-          <span style={styles.label}>Upbit (KRW)</span>
-          <span style={styles.value}>₩{opportunity.upbit_price_krw.toLocaleString()}</span>
+          <span style={styles.label}>Price Difference</span>
+          <span style={styles.value}>${opportunity.profit_usd.toLocaleString()}</span>
         </div>
         <div style={styles.priceItem}>
-          <span style={styles.label}>Exchange Rate</span>
-          <span style={styles.value}>₩{opportunity.exchange_rate.toLocaleString()}</span>
+          <span style={styles.label}>Spread</span>
+          <span style={styles.value}>{opportunity.raw_premium_percent.toFixed(4)}%</span>
         </div>
       </div>
 
       <div style={styles.footer}>
         <div style={styles.footerItem}>
-          <span style={styles.footerLabel}>Buy at</span>
-          <span style={styles.footerValue}>₩{opportunity.buy_price.toLocaleString()}</span>
+          <span style={styles.footerLabel}>Buy Cost (fee incl.)</span>
+          <span style={styles.footerValue}>${opportunity.buy_cost_usd.toLocaleString()}</span>
         </div>
         <div style={styles.arrow}>→</div>
         <div style={styles.footerItem}>
-          <span style={styles.footerLabel}>Sell at</span>
-          <span style={styles.footerValue}>₩{opportunity.sell_price.toLocaleString()}</span>
+          <span style={styles.footerLabel}>Sell Revenue (fee incl.)</span>
+          <span style={styles.footerValue}>${opportunity.sell_revenue_usd.toLocaleString()}</span>
         </div>
       </div>
     </div>
@@ -167,5 +162,25 @@ const styles = {
     color: '#667eea',
     fontWeight: 'bold',
     padding: '0 1rem',
+  },
+  actionBox: {
+    padding: '1rem',
+    background: '#eff6ff',
+    borderRadius: '8px',
+    marginBottom: '1rem',
+    borderLeft: '3px solid #3b82f6',
+  },
+  actionLabel: {
+    fontSize: '0.75rem',
+    color: '#3b82f6',
+    textTransform: 'uppercase',
+    fontWeight: '600',
+    display: 'block',
+    marginBottom: '0.25rem',
+  },
+  actionValue: {
+    fontSize: '0.875rem',
+    color: '#1e40af',
+    fontWeight: 'bold',
   },
 };

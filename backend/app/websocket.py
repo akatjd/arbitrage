@@ -48,9 +48,9 @@ manager = ConnectionManager()
 
 async def handle_websocket(
     websocket: WebSocket,
-    binance_exchange,
-    upbit_exchange,
+    multi_exchange,
     arbitrage_calculator,
+    exchange_rate_service,
     symbols: List[str],
     update_interval: float
 ):
@@ -59,72 +59,81 @@ async def handle_websocket(
 
     Args:
         websocket: WebSocket 연결
-        binance_exchange: 바이낸스 거래소 인스턴스
-        upbit_exchange: 업비트 거래소 인스턴스
-        arbitrage_calculator: 아비트라지 계산기
+        multi_exchange: 다중 거래소 인스턴스
+        arbitrage_calculator: 다중 아비트라지 계산기
+        exchange_rate_service: 환율 서비스
         symbols: 모니터링할 심볼 리스트
         update_interval: 업데이트 주기 (초)
     """
     await manager.connect(websocket)
 
     try:
+        # 첫 실행 시 환율 업데이트
+        exchange_rate = await exchange_rate_service.fetch_usd_krw_rate()
+        arbitrage_calculator.update_exchange_rate(exchange_rate)
+
+        update_count = 0
+
         while True:
-            arbitrage_opportunities = []
-            logger.info(f"Starting data collection for {len(symbols)} symbols")
+            # 10번마다 환율 업데이트 (약 3분마다)
+            if update_count % 10 == 0:
+                exchange_rate = await exchange_rate_service.fetch_usd_krw_rate()
+                arbitrage_calculator.update_exchange_rate(exchange_rate)
+
+            update_count += 1
+
+            all_opportunities = []
+            logger.info(f"Starting data collection for {len(symbols)} symbols across multiple exchanges")
 
             # 각 심볼에 대해 아비트라지 계산
             for symbol in symbols:
                 try:
-                    # 바이낸스 티커 조회
-                    binance_ticker = await binance_exchange.fetch_ticker(symbol)
-                    logger.debug(f"Fetched Binance ticker for {symbol}: {binance_ticker is not None}")
+                    # 모든 거래소에서 티커 조회
+                    tickers = {}
 
-                    # 업비트 티커 조회
-                    upbit_ticker = await upbit_exchange.fetch_ticker(
-                        upbit_exchange.convert_symbol(symbol)
-                    )
-                    logger.debug(f"Fetched Upbit ticker for {symbol}: {upbit_ticker is not None}")
+                    # CEX 거래소들만 사용 (업비트 제외)
+                    cex_tickers = await multi_exchange.fetch_all_tickers(symbol)
+                    tickers.update(cex_tickers)
 
-                    if binance_ticker and upbit_ticker:
-                        # 아비트라지 계산
-                        arbitrage = arbitrage_calculator.calculate_arbitrage(
-                            binance_ticker,
-                            upbit_ticker,
-                            binance_exchange.get_trading_fee(),
-                            upbit_exchange.get_trading_fee()
+                    logger.debug(f"Fetched tickers for {symbol} from {len(tickers)} exchanges")
+
+                    if len(tickers) >= 2:
+                        # 수수료 정보 수집
+                        fees = {}
+                        for exchange_name in tickers.keys():
+                            fees[exchange_name] = multi_exchange.get_trading_fee(exchange_name)
+
+                        # 아비트라지 기회 계산
+                        opportunities = arbitrage_calculator.calculate_arbitrage_opportunities(
+                            tickers, fees
                         )
 
-                        if arbitrage:
-                            arbitrage_opportunities.append(arbitrage)
+                        if opportunities:
+                            all_opportunities.extend(opportunities)
+                            logger.debug(f"Found {len(opportunities)} opportunities for {symbol}")
 
                 except Exception as e:
                     logger.error(f"Error processing {symbol}: {e}")
                     continue
 
-            # 평균 김치 프리미엄 계산
-            avg_premium = 0
-            if arbitrage_opportunities:
-                total_premium = sum(opp['raw_premium_percent'] for opp in arbitrage_opportunities)
-                avg_premium = total_premium / len(arbitrage_opportunities)
-
-                # 각 코인에 순수 차익 추가 (김치 프리미엄 제외)
-                for opp in arbitrage_opportunities:
-                    opp['pure_arbitrage_percent'] = round(opp['raw_premium_percent'] - avg_premium, 4)
-
-            # 수익률 순으로 정렬
-            arbitrage_opportunities.sort(
+            # 수익률 순으로 정렬 (이미 계산기에서 정렬됨)
+            all_opportunities.sort(
                 key=lambda x: x['profit_percent'],
                 reverse=True
             )
 
-            logger.info(f"Collected {len(arbitrage_opportunities)} arbitrage opportunities (Avg premium: {avg_premium:.2f}%)")
+            # 상위 50개만 전송 (너무 많으면 UI 느려짐)
+            top_opportunities = all_opportunities[:50]
+
+            logger.info(f"Collected {len(all_opportunities)} total opportunities, sending top {len(top_opportunities)}")
 
             # 클라이언트에게 전송
             message = {
                 'type': 'arbitrage_update',
-                'data': arbitrage_opportunities,
-                'avg_kimchi_premium': round(avg_premium, 4),
-                'timestamp': arbitrage_opportunities[0]['timestamp'] if arbitrage_opportunities else None
+                'data': top_opportunities,
+                'exchange_rate': arbitrage_calculator.usd_to_krw_rate,
+                'total_opportunities': len(all_opportunities),
+                'timestamp': top_opportunities[0]['timestamp'] if top_opportunities else None
             }
 
             logger.info(f"Broadcasting message to {len(manager.active_connections)} clients")

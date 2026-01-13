@@ -4,9 +4,9 @@ import logging
 from contextlib import asynccontextmanager
 
 from app.config import settings
-from app.exchanges.binance import BinanceExchange
-from app.exchanges.upbit import UpbitExchange
-from app.services.arbitrage import ArbitrageCalculator
+from app.exchanges.multi_exchange import MultiExchange
+from app.services.multi_arbitrage import MultiArbitrageCalculator
+from app.services.exchange_rate import ExchangeRateService
 from app.websocket import handle_websocket
 
 # 로깅 설정
@@ -31,37 +31,36 @@ MONITORED_SYMBOLS = [
 ]
 
 # 전역 인스턴스
-binance_exchange = None
-upbit_exchange = None
+multi_exchange = None
 arbitrage_calculator = None
+exchange_rate_service = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """애플리케이션 생명주기 관리"""
-    global binance_exchange, upbit_exchange, arbitrage_calculator
+    global multi_exchange, arbitrage_calculator, exchange_rate_service
 
     # 시작 시 초기화
-    logger.info("Initializing exchanges...")
-    binance_exchange = BinanceExchange(
+    logger.info("Initializing exchanges and services...")
+    multi_exchange = MultiExchange(
         api_key=settings.binance_api_key,
         secret=settings.binance_secret_key
     )
-    upbit_exchange = UpbitExchange(
-        access_key=settings.upbit_access_key,
-        secret_key=settings.upbit_secret_key
-    )
-    arbitrage_calculator = ArbitrageCalculator(usd_to_krw_rate=1300)
-    logger.info("Exchanges initialized successfully")
+    exchange_rate_service = ExchangeRateService()
+
+    # 초기 환율 가져오기
+    initial_rate = await exchange_rate_service.fetch_usd_krw_rate()
+    arbitrage_calculator = MultiArbitrageCalculator(usd_to_krw_rate=initial_rate)
+
+    logger.info(f"Services initialized successfully (Exchange rate: {initial_rate} KRW/USD)")
 
     yield
 
     # 종료 시 정리
     logger.info("Shutting down...")
-    if binance_exchange:
-        await binance_exchange.close()
-    if upbit_exchange:
-        await upbit_exchange.close()
+    if multi_exchange:
+        await multi_exchange.close()
 
 
 # FastAPI 앱 생성
@@ -102,9 +101,9 @@ async def health_check():
     return {
         "status": "healthy",
         "exchanges": {
-            "binance": binance_exchange is not None,
-            "upbit": upbit_exchange is not None
-        }
+            "multi_exchange": multi_exchange is not None
+        },
+        "exchange_rate": arbitrage_calculator.usd_to_krw_rate if arbitrage_calculator else None
     }
 
 
@@ -139,9 +138,9 @@ async def websocket_endpoint(websocket: WebSocket):
     """
     await handle_websocket(
         websocket=websocket,
-        binance_exchange=binance_exchange,
-        upbit_exchange=upbit_exchange,
+        multi_exchange=multi_exchange,
         arbitrage_calculator=arbitrage_calculator,
+        exchange_rate_service=exchange_rate_service,
         symbols=MONITORED_SYMBOLS,
         update_interval=settings.price_update_interval
     )

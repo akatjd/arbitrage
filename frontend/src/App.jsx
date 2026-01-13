@@ -9,12 +9,14 @@ function App() {
   const { data, isConnected, error } = useWebSocket('ws://localhost:8000/ws');
   const [opportunities, setOpportunities] = useState([]);
   const [lastUpdate, setLastUpdate] = useState(null);
-  const [avgKimchiPremium, setAvgKimchiPremium] = useState(0);
+  const [exchangeRate, setExchangeRate] = useState(0);
+  const [totalOpportunities, setTotalOpportunities] = useState(0);
 
   useEffect(() => {
     if (data && data.type === 'arbitrage_update') {
       setOpportunities(data.data || []);
-      setAvgKimchiPremium(data.avg_kimchi_premium || 0);
+      setExchangeRate(data.exchange_rate || 0);
+      setTotalOpportunities(data.total_opportunities || 0);
       setLastUpdate(new Date(data.timestamp));
     }
   }, [data]);
@@ -43,7 +45,11 @@ function App() {
             <>
               <div style={styles.statsBar}>
                 <div style={styles.stat}>
-                  <span style={styles.statLabel}>Total Pairs</span>
+                  <span style={styles.statLabel}>Total Opportunities</span>
+                  <span style={styles.statValue}>{totalOpportunities}</span>
+                </div>
+                <div style={styles.stat}>
+                  <span style={styles.statLabel}>Displayed (Top)</span>
                   <span style={styles.statValue}>{opportunities.length}</span>
                 </div>
                 <div style={styles.stat}>
@@ -56,21 +62,21 @@ function App() {
                   </span>
                 </div>
                 <div style={styles.stat}>
-                  <span style={styles.statLabel}>평균 김치 프리미엄</span>
-                  <span style={{
-                    ...styles.statValue,
-                    color: avgKimchiPremium > 0 ? '#f59e0b' : '#ef4444'
-                  }}>
-                    {avgKimchiPremium > 0 ? '+' : ''}{avgKimchiPremium.toFixed(4)}%
-                  </span>
-                </div>
-                <div style={styles.stat}>
-                  <span style={styles.statLabel}>Best Opportunity</span>
+                  <span style={styles.statLabel}>Best Spread</span>
                   <span style={{
                     ...styles.statValue,
                     color: '#667eea'
                   }}>
                     {opportunities[0]?.profit_percent.toFixed(4)}%
+                  </span>
+                </div>
+                <div style={styles.stat}>
+                  <span style={styles.statLabel}>Best Profit (USD)</span>
+                  <span style={{
+                    ...styles.statValue,
+                    color: '#10b981'
+                  }}>
+                    ${opportunities[0]?.profit_usd?.toFixed(4) || '0.0000'}
                   </span>
                 </div>
                 {lastUpdate && (
