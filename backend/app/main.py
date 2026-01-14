@@ -1,13 +1,19 @@
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 from contextlib import asynccontextmanager
+from typing import List, Optional
 
 from app.config import settings
-from app.exchanges.multi_exchange import MultiExchange
-from app.services.multi_arbitrage import MultiArbitrageCalculator
-from app.services.exchange_rate import ExchangeRateService
-from app.websocket import handle_websocket
+from app.models.funding import (
+    FundingArbitrageRequest,
+    FundingArbitrageResult,
+    TopArbitrageOpportunity,
+    ExchangeType
+)
+from app.exchanges.futures_manager import FuturesManager
+from app.services.funding_arbitrage import FundingArbitrageService
+from app.websocket import handle_funding_websocket
 
 # 로깅 설정
 logging.basicConfig(
@@ -16,58 +22,57 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 모니터링할 심볼 리스트 (USDT 페어)
-# 업비트에 상장된 코인만 포함
+# 모니터링할 심볼 리스트 (무기한 선물)
 MONITORED_SYMBOLS = [
-    'BTC/USDT',
-    'ETH/USDT',
-    'XRP/USDT',
-    'SOL/USDT',
-    'ADA/USDT',
-    'AVAX/USDT',
-    'DOGE/USDT',
-    'DOT/USDT',
-    'LINK/USDT',
+    'BTC/USDT:USDT',
+    'ETH/USDT:USDT',
+    'SOL/USDT:USDT',
+    'XRP/USDT:USDT',
+    'DOGE/USDT:USDT',
+    'AVAX/USDT:USDT',
+    'LINK/USDT:USDT',
+    'ARB/USDT:USDT',
+    'OP/USDT:USDT',
 ]
 
 # 전역 인스턴스
-multi_exchange = None
-arbitrage_calculator = None
-exchange_rate_service = None
+futures_manager: Optional[FuturesManager] = None
+funding_service: Optional[FundingArbitrageService] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """애플리케이션 생명주기 관리"""
-    global multi_exchange, arbitrage_calculator, exchange_rate_service
+    global futures_manager, funding_service
 
     # 시작 시 초기화
-    logger.info("Initializing exchanges and services...")
-    multi_exchange = MultiExchange(
-        api_key=settings.binance_api_key,
-        secret=settings.binance_secret_key
-    )
-    exchange_rate_service = ExchangeRateService()
+    logger.info("Initializing Funding Rate Arbitrage services...")
 
-    # 초기 환율 가져오기
-    initial_rate = await exchange_rate_service.fetch_usd_krw_rate()
-    arbitrage_calculator = MultiArbitrageCalculator(usd_to_krw_rate=initial_rate)
+    config = {
+        'binance_api_key': settings.binance_api_key,
+        'binance_secret': settings.binance_secret_key,
+    }
 
-    logger.info(f"Services initialized successfully (Exchange rate: {initial_rate} KRW/USD)")
+    futures_manager = FuturesManager(config)
+    await futures_manager.initialize()
+
+    funding_service = FundingArbitrageService(futures_manager)
+
+    logger.info("Services initialized successfully")
 
     yield
 
     # 종료 시 정리
     logger.info("Shutting down...")
-    if multi_exchange:
-        await multi_exchange.close()
+    if futures_manager:
+        await futures_manager.close_all()
 
 
 # FastAPI 앱 생성
 app = FastAPI(
-    title="Crypto Arbitrage API",
-    description="바이낸스와 업비트 간의 암호화폐 아비트라지 모니터링 API",
-    version="1.0.0",
+    title="Funding Rate Arbitrage API",
+    description="선물 거래소 간 펀딩 레이트 아비트리지 모니터링 API",
+    version="2.0.0",
     lifespan=lifespan
 )
 
@@ -85,12 +90,16 @@ app.add_middleware(
 async def root():
     """루트 엔드포인트"""
     return {
-        "message": "Crypto Arbitrage API",
-        "version": "1.0.0",
+        "message": "Funding Rate Arbitrage API",
+        "version": "2.0.0",
         "endpoints": {
             "websocket": "/ws",
             "health": "/health",
-            "symbols": "/symbols"
+            "exchanges": "/api/v1/exchanges",
+            "symbols": "/api/v1/symbols",
+            "funding_rates": "/api/v1/funding-rates/{exchange}/{symbol}",
+            "calculate": "/api/v1/funding-arbitrage/calculate",
+            "top_opportunities": "/api/v1/funding-arbitrage/top/{symbol}"
         }
     }
 
@@ -100,47 +109,153 @@ async def health_check():
     """헬스 체크"""
     return {
         "status": "healthy",
-        "exchanges": {
-            "multi_exchange": multi_exchange is not None
-        },
-        "exchange_rate": arbitrage_calculator.usd_to_krw_rate if arbitrage_calculator else None
+        "exchanges": futures_manager.get_available_exchanges() if futures_manager else [],
+        "exchange_count": len(futures_manager.exchanges) if futures_manager else 0
     }
 
 
-@app.get("/symbols")
+@app.get("/api/v1/exchanges")
+async def get_exchanges():
+    """지원하는 거래소 목록"""
+    if not futures_manager:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    return {
+        "exchanges": futures_manager.get_exchange_info()
+    }
+
+
+@app.get("/api/v1/symbols")
 async def get_symbols():
-    """모니터링 중인 심볼 목록 조회"""
+    """모니터링 중인 심볼 목록"""
     return {
         "symbols": MONITORED_SYMBOLS,
         "count": len(MONITORED_SYMBOLS)
     }
 
 
-@app.post("/exchange-rate")
-async def update_exchange_rate(rate: float):
-    """
-    USD/KRW 환율 업데이트
+@app.get("/api/v1/funding-rates/{exchange}/{symbol:path}")
+async def get_funding_rate(exchange: str, symbol: str):
+    """특정 거래소의 펀딩 레이트 조회"""
+    if not futures_manager:
+        raise HTTPException(status_code=503, detail="Service not initialized")
 
-    Args:
-        rate: 새로운 환율
-    """
-    if arbitrage_calculator:
-        arbitrage_calculator.update_exchange_rate(rate)
-        return {"message": "Exchange rate updated", "rate": rate}
-    return {"error": "Arbitrage calculator not initialized"}, 500
+    try:
+        exchange_type = ExchangeType(exchange.lower())
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid exchange: {exchange}")
+
+    rate = await futures_manager.get_funding_rate(exchange_type, symbol)
+
+    if not rate:
+        raise HTTPException(status_code=404, detail="Funding rate not found")
+
+    return rate
+
+
+@app.get("/api/v1/funding-rates/all/{symbol:path}")
+async def get_all_funding_rates(symbol: str):
+    """모든 거래소의 펀딩 레이트 조회"""
+    if not futures_manager:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    rates = await futures_manager.get_all_funding_rates(symbol)
+
+    return {
+        "symbol": symbol,
+        "rates": {k.value: v.dict() for k, v in rates.items()},
+        "exchange_count": len(rates)
+    }
+
+
+@app.post("/api/v1/funding-arbitrage/calculate")
+async def calculate_funding_arbitrage(request: FundingArbitrageRequest):
+    """펀딩 아비트리지 계산"""
+    if not futures_manager or not funding_service:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    long_rate = await futures_manager.get_funding_rate(
+        request.long_exchange, request.symbol
+    )
+    short_rate = await futures_manager.get_funding_rate(
+        request.short_exchange, request.symbol
+    )
+
+    if not long_rate:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Funding rate not available for {request.long_exchange.value}"
+        )
+
+    if not short_rate:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Funding rate not available for {request.short_exchange.value}"
+        )
+
+    result = funding_service.calculate_arbitrage(request, long_rate, short_rate)
+    return result
+
+
+@app.get("/api/v1/funding-arbitrage/top/{symbol:path}")
+async def get_top_opportunities(
+    symbol: str,
+    position_size: float = Query(10000, description="Position size in USDT"),
+    leverage: float = Query(2, description="Leverage multiplier"),
+    holding_hours: int = Query(24, description="Holding period in hours")
+):
+    """상위 아비트리지 기회 조회"""
+    if not funding_service:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    opportunities = await funding_service.find_top_opportunities(
+        symbol=symbol,
+        default_position=position_size,
+        default_leverage=leverage,
+        default_hours=holding_hours
+    )
+
+    return {
+        "symbol": symbol,
+        "opportunities": [opp.dict() for opp in opportunities],
+        "count": len(opportunities)
+    }
+
+
+@app.get("/api/v1/funding-arbitrage/all")
+async def get_all_top_opportunities(
+    position_size: float = Query(10000, description="Position size in USDT"),
+    leverage: float = Query(2, description="Leverage multiplier"),
+    holding_hours: int = Query(24, description="Holding period in hours"),
+    limit: int = Query(20, description="Maximum number of results")
+):
+    """모든 심볼에서 상위 아비트리지 기회 조회"""
+    if not funding_service:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    opportunities = await funding_service.find_all_opportunities(
+        symbols=MONITORED_SYMBOLS,
+        default_position=position_size,
+        default_leverage=leverage,
+        default_hours=holding_hours,
+        limit=limit
+    )
+
+    return {
+        "opportunities": [opp.dict() for opp in opportunities],
+        "count": len(opportunities)
+    }
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """
     WebSocket 엔드포인트
-    실시간 아비트라지 데이터 스트리밍
+    실시간 펀딩 레이트 아비트리지 데이터 스트리밍
     """
-    await handle_websocket(
+    await handle_funding_websocket(
         websocket=websocket,
-        multi_exchange=multi_exchange,
-        arbitrage_calculator=arbitrage_calculator,
-        exchange_rate_service=exchange_rate_service,
+        funding_service=funding_service,
         symbols=MONITORED_SYMBOLS,
         update_interval=settings.price_update_interval
     )

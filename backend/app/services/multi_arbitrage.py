@@ -123,6 +123,9 @@ class MultiArbitrageCalculator:
             # 프리미엄 계산 (수수료 제외한 순수 가격 차이)
             raw_premium_percent = ((sell_price_usd - buy_price_usd) / buy_price_usd) * 100
 
+            # 순수 가격 차이 (수수료 제외)
+            price_difference_usd = sell_price_usd - buy_price_usd
+
             return {
                 'symbol': buy_ticker['symbol'],
                 'buy_exchange': buy_exchange.upper(),
@@ -135,6 +138,7 @@ class MultiArbitrageCalculator:
                 'sell_price_usd': round(sell_price_usd, 4),
                 'buy_cost_usd': round(buy_cost, 4),
                 'sell_revenue_usd': round(sell_revenue, 4),
+                'price_difference_usd': round(price_difference_usd, 4),
                 'profit_usd': round(profit, 4),
                 'timestamp': buy_ticker['timestamp'],
                 'is_profitable': profit_percent > 0

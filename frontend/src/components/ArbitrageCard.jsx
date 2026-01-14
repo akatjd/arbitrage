@@ -42,11 +42,18 @@ export default function ArbitrageCard({ opportunity }) {
         </div>
         <div style={styles.priceItem}>
           <span style={styles.label}>Price Difference</span>
-          <span style={styles.value}>${opportunity.profit_usd.toLocaleString()}</span>
+          <span style={styles.value}>${opportunity.price_difference_usd?.toLocaleString() ?? '0'}</span>
         </div>
         <div style={styles.priceItem}>
           <span style={styles.label}>Spread</span>
           <span style={styles.value}>{opportunity.raw_premium_percent.toFixed(4)}%</span>
+        </div>
+        <div style={styles.priceItem}>
+          <span style={styles.label}>Net Profit (fee incl.)</span>
+          <span style={{
+            ...styles.value,
+            color: opportunity.profit_usd > 0 ? '#10b981' : '#ef4444'
+          }}>${opportunity.profit_usd.toLocaleString()}</span>
         </div>
       </div>
 
