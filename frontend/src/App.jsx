@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import Header from './components/Header';
 import ArbitrageCard from './components/ArbitrageCard';
+import FundingCard from './components/FundingCard';
 import LoadingSpinner from './components/LoadingSpinner';
 import './App.css';
 
@@ -11,9 +12,11 @@ function App() {
   const [lastUpdate, setLastUpdate] = useState(null);
   const [exchangeRate, setExchangeRate] = useState(0);
   const [totalOpportunities, setTotalOpportunities] = useState(0);
+  const [dataType, setDataType] = useState(null);
 
   useEffect(() => {
-    if (data && data.type === 'arbitrage_update') {
+    if (data && (data.type === 'arbitrage_update' || data.type === 'funding_update')) {
+      setDataType(data.type);
       setOpportunities(data.data || []);
       setExchangeRate(data.exchange_rate || 0);
       setTotalOpportunities(data.total_opportunities || 0);
@@ -52,33 +55,58 @@ function App() {
                   <span style={styles.statLabel}>Displayed (Top)</span>
                   <span style={styles.statValue}>{opportunities.length}</span>
                 </div>
-                <div style={styles.stat}>
-                  <span style={styles.statLabel}>Profitable</span>
-                  <span style={{
-                    ...styles.statValue,
-                    color: '#10b981'
-                  }}>
-                    {opportunities.filter(o => o.is_profitable).length}
-                  </span>
-                </div>
-                <div style={styles.stat}>
-                  <span style={styles.statLabel}>Best Spread</span>
-                  <span style={{
-                    ...styles.statValue,
-                    color: '#667eea'
-                  }}>
-                    {opportunities[0]?.profit_percent.toFixed(4)}%
-                  </span>
-                </div>
-                <div style={styles.stat}>
-                  <span style={styles.statLabel}>Best Profit (USD)</span>
-                  <span style={{
-                    ...styles.statValue,
-                    color: '#10b981'
-                  }}>
-                    ${opportunities[0]?.profit_usd?.toFixed(4) || '0.0000'}
-                  </span>
-                </div>
+                {dataType === 'funding_update' ? (
+                  <>
+                    <div style={styles.stat}>
+                      <span style={styles.statLabel}>Best APR</span>
+                      <span style={{
+                        ...styles.statValue,
+                        color: '#10b981'
+                      }}>
+                        {opportunities[0]?.estimated_apr?.toFixed(2) || '0.00'}%
+                      </span>
+                    </div>
+                    <div style={styles.stat}>
+                      <span style={styles.statLabel}>Best Spread</span>
+                      <span style={{
+                        ...styles.statValue,
+                        color: '#667eea'
+                      }}>
+                        {((opportunities[0]?.funding_spread || 0) * 100).toFixed(4)}%
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={styles.stat}>
+                      <span style={styles.statLabel}>Profitable</span>
+                      <span style={{
+                        ...styles.statValue,
+                        color: '#10b981'
+                      }}>
+                        {opportunities.filter(o => o.is_profitable).length}
+                      </span>
+                    </div>
+                    <div style={styles.stat}>
+                      <span style={styles.statLabel}>Best Spread</span>
+                      <span style={{
+                        ...styles.statValue,
+                        color: '#667eea'
+                      }}>
+                        {opportunities[0]?.profit_percent?.toFixed(4) || '0.0000'}%
+                      </span>
+                    </div>
+                    <div style={styles.stat}>
+                      <span style={styles.statLabel}>Best Profit (USD)</span>
+                      <span style={{
+                        ...styles.statValue,
+                        color: '#10b981'
+                      }}>
+                        ${opportunities[0]?.profit_usd?.toFixed(4) || '0.0000'}
+                      </span>
+                    </div>
+                  </>
+                )}
                 {lastUpdate && (
                   <div style={styles.stat}>
                     <span style={styles.statLabel}>Last Update</span>
@@ -91,7 +119,9 @@ function App() {
 
               <div style={styles.grid}>
                 {opportunities.map((opportunity, index) => (
-                  <ArbitrageCard key={`${opportunity.symbol}-${index}`} opportunity={opportunity} />
+                  dataType === 'funding_update'
+                    ? <FundingCard key={`${opportunity.symbol}-${index}`} opportunity={opportunity} />
+                    : <ArbitrageCard key={`${opportunity.symbol}-${index}`} opportunity={opportunity} />
                 ))}
               </div>
             </>

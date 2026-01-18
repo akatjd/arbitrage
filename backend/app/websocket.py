@@ -34,7 +34,7 @@ class ConnectionManager:
             try:
                 await connection.send_json(message)
             except Exception as e:
-                logger.error(f"Error sending message: {e}")
+                logger.error(f"Error sending message: {type(e).__name__}: {e}")
                 disconnected.add(connection)
 
         for connection in disconnected:
@@ -75,10 +75,10 @@ async def handle_funding_websocket(
                     limit=20
                 )
 
-                # 클라이언트에게 전송
+                # 클라이언트에게 전송 (datetime을 isoformat으로 변환)
                 message = {
                     'type': 'funding_update',
-                    'data': [opp.dict() for opp in all_opportunities],
+                    'data': [opp.model_dump(mode='json') for opp in all_opportunities],
                     'total_opportunities': len(all_opportunities),
                     'timestamp': datetime.now().isoformat()
                 }

@@ -189,10 +189,14 @@ class FundingArbitrageService:
         default_position: float = 10000,
         default_leverage: float = 2,
         default_hours: int = 24,
-        limit: int = 20
+        limit: int = 20,
+        one_per_symbol: bool = True
     ) -> List[TopArbitrageOpportunity]:
         """
         여러 심볼에서 상위 아비트리지 기회 탐색
+
+        Args:
+            one_per_symbol: True면 심볼당 최고 기회 하나만 반환
         """
         all_opportunities = []
 
@@ -204,7 +208,11 @@ class FundingArbitrageService:
                     default_leverage=default_leverage,
                     default_hours=default_hours
                 )
-                all_opportunities.extend(opps)
+                if one_per_symbol and opps:
+                    # 심볼당 최고 기회 하나만 추가
+                    all_opportunities.append(opps[0])
+                else:
+                    all_opportunities.extend(opps)
             except Exception as e:
                 logger.error(f"Error finding opportunities for {symbol}: {e}")
                 continue

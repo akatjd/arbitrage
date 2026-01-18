@@ -65,12 +65,12 @@ class FuturesManager:
         except Exception as e:
             logger.error(f"Failed to initialize Hyperliquid: {e}")
 
-        # Lighter
-        try:
-            self.exchanges[ExchangeType.LIGHTER] = LighterExchange()
-            logger.info("Lighter initialized")
-        except Exception as e:
-            logger.error(f"Failed to initialize Lighter: {e}")
+        # Lighter - 현재 API 비활성화 상태로 비활성화
+        # try:
+        #     self.exchanges[ExchangeType.LIGHTER] = LighterExchange()
+        #     logger.info("Lighter initialized")
+        # except Exception as e:
+        #     logger.error(f"Failed to initialize Lighter: {e}")
 
         self._initialized = True
         logger.info(f"Futures Manager initialized with {len(self.exchanges)} exchanges")

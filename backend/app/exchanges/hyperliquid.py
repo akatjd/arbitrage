@@ -31,10 +31,16 @@ class HyperliquidExchange(BaseFuturesExchange):
         self.exchange = ccxt.hyperliquid(config)
         logger.info("Initialized Hyperliquid exchange")
 
+    def _convert_symbol(self, symbol: str) -> str:
+        """USDT 심볼을 Hyperliquid의 USDC 심볼로 변환"""
+        # BTC/USDT:USDT -> BTC/USDC:USDC
+        return symbol.replace('USDT', 'USDC')
+
     async def fetch_funding_rate(self, symbol: str) -> Optional[FundingRateInfo]:
         """특정 심볼의 펀딩 레이트 조회"""
         try:
-            funding = await self.exchange.fetch_funding_rate(symbol)
+            hl_symbol = self._convert_symbol(symbol)
+            funding = await self.exchange.fetch_funding_rate(hl_symbol)
 
             next_funding_time = None
             if funding.get('fundingTimestamp'):

@@ -33,6 +33,17 @@ MONITORED_SYMBOLS = [
     'LINK/USDT:USDT',
     'ARB/USDT:USDT',
     'OP/USDT:USDT',
+    'BERA/USDT:USDT',
+    'SUI/USDT:USDT',
+    '1000PEPE/USDT:USDT',
+    'WIF/USDT:USDT',
+    'NEAR/USDT:USDT',
+    'APT/USDT:USDT',
+    'FIL/USDT:USDT',
+    'TIA/USDT:USDT',
+    'SEI/USDT:USDT',
+    'INJ/USDT:USDT',
+    'JUP/USDT:USDT',
 ]
 
 # 전역 인스턴스
