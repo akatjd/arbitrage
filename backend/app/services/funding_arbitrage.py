@@ -35,54 +35,51 @@ class FundingArbitrageService:
         - Short 포지션: 펀딩 레이트 > 0 이면 수령, < 0 이면 지불
 
         전략: Long에서 받고 Short에서 받는 최적 조합 찾기
+
+        APR 계산 방식 (arb69 동일):
+        - 펀딩 스프레드 기준으로 단순 연환산
+        - APR = spread * 하루 펀딩 횟수 * 365 * 100
         """
         # 필요 증거금 계산 (양쪽 포지션 모두 고려)
         required_margin = (request.position_size_usdt / request.leverage) * 2
-
-        # 거래소별 펀딩 주기
-        long_interval = self.futures_manager.get_funding_interval(request.long_exchange)
-        short_interval = self.futures_manager.get_funding_interval(request.short_exchange)
-
-        # 총 펀딩 횟수 계산
-        long_funding_count = request.holding_period_hours // long_interval
-        short_funding_count = request.holding_period_hours // short_interval
 
         # 펀딩 레이트 값
         long_rate_value = long_rate.funding_rate
         short_rate_value = short_rate.funding_rate
 
-        # 1회당 펀딩 수익 계산 (USDT)
-        # Long 포지션 수익: -funding_rate * position_size (Long은 양수 펀딩에서 지불)
-        # Short 포지션 수익: +funding_rate * position_size (Short은 양수 펀딩에서 수령)
-        long_per_funding = -long_rate_value * request.position_size_usdt
-        short_per_funding = short_rate_value * request.position_size_usdt
+        # 펀딩 레이트 스프레드 (Short에서 받고 Long에서 지불하는 차이)
+        # Short 포지션: 양수 펀딩이면 수령, 음수면 지불
+        # Long 포지션: 양수 펀딩이면 지불, 음수면 수령
+        # 스프레드 = Short 수령 - Long 지불 = short_rate - long_rate
+        funding_rate_spread = short_rate_value - long_rate_value
 
-        # 총 펀딩 수익 계산
-        total_long_profit = long_per_funding * long_funding_count
-        total_short_profit = short_per_funding * short_funding_count
-        total_profit = total_long_profit + total_short_profit
+        # 거래소별 펀딩 주기 (시간)
+        long_interval = long_rate.funding_interval_hours
+        short_interval = short_rate.funding_interval_hours
 
-        # 평균 펀딩 횟수 (표시용)
-        total_funding_count = long_funding_count + short_funding_count
-        avg_funding_count = total_funding_count / 2 if total_funding_count > 0 else 1
+        # 하루 펀딩 횟수 (Short 거래소 기준 - 펀딩을 받는 쪽)
+        # arb69 방식: Short 거래소의 펀딩 주기 사용
+        funding_per_day = 24 // short_interval if short_interval > 0 else 3
 
-        # 1회 평균 펀딩 수익
-        per_funding_profit = total_profit / avg_funding_count if avg_funding_count > 0 else 0
+        # 보유 기간 동안 펀딩 횟수 (Short 거래소 기준)
+        total_funding_count = request.holding_period_hours // short_interval if short_interval > 0 else request.holding_period_hours // 8
+
+        # 1회당 펀딩 수익 (USDT)
+        per_funding_profit = funding_rate_spread * request.position_size_usdt
+
+        # 총 수익
+        total_profit = per_funding_profit * total_funding_count
 
         # 수익률 계산 (증거금 대비)
         profit_percent = (total_profit / required_margin) * 100 if required_margin > 0 else 0
 
-        # APR 계산 (연환산)
-        hours_per_year = 8760  # 365 * 24
-        apr = (profit_percent / request.holding_period_hours) * hours_per_year if request.holding_period_hours > 0 else 0
+        # APR 계산 (arb69 방식: 스프레드 * 하루 펀딩 횟수 * 365)
+        apr = abs(funding_rate_spread) * funding_per_day * 365 * 100
 
         # 가격 스프레드 계산
-        min_price = min(long_rate.mark_price, short_rate.mark_price)
+        min_price = min(long_rate.mark_price, short_rate.mark_price) if long_rate.mark_price > 0 and short_rate.mark_price > 0 else max(long_rate.mark_price, short_rate.mark_price)
         price_spread = abs(long_rate.mark_price - short_rate.mark_price)
         price_spread_percent = (price_spread / min_price) * 100 if min_price > 0 else 0
-
-        # 펀딩 레이트 스프레드
-        funding_rate_spread = short_rate_value - long_rate_value
 
         return FundingArbitrageResult(
             symbol=request.symbol,
@@ -95,7 +92,7 @@ class FundingArbitrageService:
             short_mark_price=short_rate.mark_price,
             price_spread_percent=round(price_spread_percent, 4),
             per_funding_profit_usdt=round(per_funding_profit, 4),
-            total_funding_count=int(avg_funding_count),
+            total_funding_count=int(total_funding_count),
             estimated_total_profit_usdt=round(total_profit, 4),
             estimated_profit_percent=round(profit_percent, 4),
             apr=round(apr, 2),
@@ -121,9 +118,14 @@ class FundingArbitrageService:
         # 모든 거래소에서 펀딩 레이트 조회
         all_rates = await self.futures_manager.get_all_funding_rates(symbol)
 
-        if len(all_rates) < 2:
-            logger.warning(f"Not enough exchanges with data for {symbol}")
+        # 유효한 데이터만 필터링 (펀딩 레이트가 있는 것만, mark_price=0도 허용)
+        valid_rates = {k: v for k, v in all_rates.items() if v.funding_rate is not None}
+
+        if len(valid_rates) < 2:
+            logger.warning(f"Not enough valid exchanges with data for {symbol} (valid: {len(valid_rates)}, total: {len(all_rates)})")
             return []
+
+        all_rates = valid_rates
 
         opportunities = []
         exchanges = list(all_rates.keys())
