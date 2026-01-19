@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
-    # 업데이트 주기
-    price_update_interval: float = 1.0
+    # 업데이트 주기 (초)
+    price_update_interval: float = 60.0
 
     class Config:
         env_file = ".env"

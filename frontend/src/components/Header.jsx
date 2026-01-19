@@ -1,10 +1,10 @@
 import React from 'react';
 
-export default function Header({ isConnected }) {
+export default function Header({ isConnected, title = 'Crypto Arbitrage Monitor' }) {
   return (
     <header style={styles.header}>
       <div style={styles.container}>
-        <h1 style={styles.title}>Crypto Arbitrage Monitor</h1>
+        <h1 style={styles.title}>{title}</h1>
         <div style={styles.status}>
           <div style={{
             ...styles.statusDot,

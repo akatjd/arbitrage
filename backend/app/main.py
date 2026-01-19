@@ -174,7 +174,7 @@ async def get_all_funding_rates(symbol: str):
 
     return {
         "symbol": symbol,
-        "rates": {k.value: v.dict() for k, v in rates.items()},
+        "rates": {k.value: v.model_dump(mode='json') for k, v in rates.items()},
         "exchange_count": len(rates)
     }
 
@@ -228,7 +228,7 @@ async def get_top_opportunities(
 
     return {
         "symbol": symbol,
-        "opportunities": [opp.dict() for opp in opportunities],
+        "opportunities": [opp.model_dump(mode='json') for opp in opportunities],
         "count": len(opportunities)
     }
 
@@ -253,7 +253,7 @@ async def get_all_top_opportunities(
     )
 
     return {
-        "opportunities": [opp.dict() for opp in opportunities],
+        "opportunities": [opp.model_dump(mode='json') for opp in opportunities],
         "count": len(opportunities)
     }
 
