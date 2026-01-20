@@ -136,6 +136,42 @@ class BinanceFutures(BaseFuturesExchange):
             logger.error(f"Error fetching Binance symbols: {e}")
             return []
 
+    async def get_top_volume_symbols(self, limit: int = 50) -> List[str]:
+        """24시간 거래량 기준 상위 심볼 조회"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    'https://fapi.binance.com/fapi/v1/ticker/24hr',
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        # USDT 마진 선물만 필터링하고 거래량 기준 정렬
+                        usdt_pairs = [
+                            item for item in data
+                            if item.get('symbol', '').endswith('USDT')
+                        ]
+                        # quoteVolume (USDT 기준 거래량)으로 정렬
+                        sorted_pairs = sorted(
+                            usdt_pairs,
+                            key=lambda x: float(x.get('quoteVolume', 0)),
+                            reverse=True
+                        )
+                        # 상위 limit개 심볼을 CCXT 형식으로 변환
+                        symbols = []
+                        for item in sorted_pairs[:limit]:
+                            binance_symbol = item.get('symbol', '')
+                            if binance_symbol.endswith('USDT'):
+                                base = binance_symbol[:-4]
+                                ccxt_symbol = f"{base}/USDT:USDT"
+                                symbols.append(ccxt_symbol)
+                        logger.info(f"Fetched top {len(symbols)} Binance symbols by volume")
+                        return symbols
+            return []
+        except Exception as e:
+            logger.error(f"Error fetching top volume symbols: {e}")
+            return []
+
     async def close(self):
         """연결 종료"""
         try:

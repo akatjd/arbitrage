@@ -84,7 +84,12 @@ class TopArbitrageOpportunity(BaseModel):
     short_exchange: ExchangeType
     long_funding_rate: float
     short_funding_rate: float
-    funding_spread: float
+    long_funding_interval: int  # Long 거래소 펀딩 주기 (시간)
+    short_funding_interval: int  # Short 거래소 펀딩 주기 (시간)
+    long_funding_rate_hourly: float  # 1시간 기준 정규화된 펀딩 레이트
+    short_funding_rate_hourly: float  # 1시간 기준 정규화된 펀딩 레이트
+    funding_spread: float  # 원본 스프레드
+    funding_spread_hourly: float  # 1시간 기준 정규화된 스프레드
     estimated_apr: float  # 기본 설정 기준 APR
     long_mark_price: float
     short_mark_price: float

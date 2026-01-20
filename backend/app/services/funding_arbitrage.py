@@ -162,6 +162,17 @@ class FundingArbitrageService:
             best_long_rate = rate1 if result1.apr > result2.apr else rate2
             best_short_rate = rate2 if result1.apr > result2.apr else rate1
 
+            # 1시간 기준으로 정규화된 펀딩 레이트 계산
+            long_interval = best_long_rate.funding_interval_hours
+            short_interval = best_short_rate.funding_interval_hours
+
+            # 펀딩 레이트를 1시간 기준으로 환산 (예: 8시간 주기 0.01% -> 1시간 기준 0.00125%)
+            long_rate_hourly = best.long_funding_rate / long_interval if long_interval > 0 else best.long_funding_rate
+            short_rate_hourly = best.short_funding_rate / short_interval if short_interval > 0 else best.short_funding_rate
+
+            # 1시간 기준 스프레드 계산
+            funding_spread_hourly = short_rate_hourly - long_rate_hourly
+
             opportunities.append(TopArbitrageOpportunity(
                 rank=0,
                 symbol=symbol,
@@ -169,7 +180,12 @@ class FundingArbitrageService:
                 short_exchange=best.short_exchange,
                 long_funding_rate=best.long_funding_rate,
                 short_funding_rate=best.short_funding_rate,
+                long_funding_interval=long_interval,
+                short_funding_interval=short_interval,
+                long_funding_rate_hourly=round(long_rate_hourly, 8),
+                short_funding_rate_hourly=round(short_rate_hourly, 8),
                 funding_spread=best.funding_rate_spread,
+                funding_spread_hourly=round(funding_spread_hourly, 8),
                 estimated_apr=best.apr,
                 long_mark_price=best_long_rate.mark_price,
                 short_mark_price=best_short_rate.mark_price,

@@ -72,7 +72,7 @@ async def handle_funding_websocket(
                     default_position=10000,
                     default_leverage=2,
                     default_hours=24,
-                    limit=20
+                    limit=50
                 )
 
                 # 클라이언트에게 전송 (datetime을 isoformat으로 변환)

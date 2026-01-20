@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function FundingCard({ opportunity }) {
+export default function FundingCard({ opportunity, onClick }) {
   const apr = opportunity.estimated_apr || 0;
   const isGoodApr = apr > 10;
   const profitColor = isGoodApr ? '#10b981' : apr > 0 ? '#f59e0b' : '#ef4444';
@@ -15,11 +15,20 @@ export default function FundingCard({ opportunity }) {
     return exchange.charAt(0).toUpperCase() + exchange.slice(1);
   };
 
+  const formatInterval = (hours) => {
+    if (!hours) return '?h';
+    return `${hours}h`;
+  };
+
   return (
-    <div style={{
-      ...styles.card,
-      borderLeft: `4px solid ${profitColor}`,
-    }}>
+    <div
+      style={{
+        ...styles.card,
+        borderLeft: `4px solid ${profitColor}`,
+        cursor: onClick ? 'pointer' : 'default',
+      }}
+      onClick={onClick}
+    >
       <div style={styles.cardHeader}>
         <div>
           <h3 style={styles.symbol}>{opportunity.symbol?.replace('/USDT:USDT', '').replace('/USDC:USDC', '')}</h3>
@@ -44,25 +53,37 @@ export default function FundingCard({ opportunity }) {
 
       <div style={styles.rateGrid}>
         <div style={styles.rateItem}>
-          <span style={styles.label}>{formatExchange(opportunity.long_exchange)} Funding</span>
+          <span style={styles.label}>
+            {formatExchange(opportunity.long_exchange)} Funding
+            <span style={styles.intervalBadge}>{formatInterval(opportunity.long_funding_interval)}</span>
+          </span>
           <span style={{
             ...styles.value,
             color: opportunity.long_funding_rate < 0 ? '#10b981' : '#ef4444'
           }}>
             {formatRate(opportunity.long_funding_rate)}
           </span>
+          <span style={styles.hourlyRate}>
+            ({formatRate(opportunity.long_funding_rate_hourly)}/h)
+          </span>
         </div>
         <div style={styles.rateItem}>
-          <span style={styles.label}>{formatExchange(opportunity.short_exchange)} Funding</span>
+          <span style={styles.label}>
+            {formatExchange(opportunity.short_exchange)} Funding
+            <span style={styles.intervalBadge}>{formatInterval(opportunity.short_funding_interval)}</span>
+          </span>
           <span style={{
             ...styles.value,
             color: opportunity.short_funding_rate > 0 ? '#10b981' : '#ef4444'
           }}>
             {formatRate(opportunity.short_funding_rate)}
           </span>
+          <span style={styles.hourlyRate}>
+            ({formatRate(opportunity.short_funding_rate_hourly)}/h)
+          </span>
         </div>
         <div style={styles.rateItem}>
-          <span style={styles.label}>Funding Spread</span>
+          <span style={styles.label}>Spread (Original)</span>
           <span style={{
             ...styles.value,
             color: '#667eea'
@@ -71,10 +92,21 @@ export default function FundingCard({ opportunity }) {
           </span>
         </div>
         <div style={styles.rateItem}>
-          <span style={styles.label}>Est. APR</span>
+          <span style={styles.label}>Spread (Hourly)</span>
           <span style={{
             ...styles.value,
-            color: profitColor
+            color: '#667eea',
+            fontWeight: 'bold'
+          }}>
+            {formatRate(opportunity.funding_spread_hourly)}
+          </span>
+        </div>
+        <div style={{...styles.rateItem, gridColumn: 'span 2'}}>
+          <span style={styles.label}>Est. APR (based on hourly spread)</span>
+          <span style={{
+            ...styles.value,
+            color: profitColor,
+            fontSize: '1.25rem'
           }}>
             {apr.toFixed(2)}%
           </span>
@@ -172,10 +204,28 @@ const styles = {
     color: '#6b7280',
     textTransform: 'uppercase',
     fontWeight: '500',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+  },
+  intervalBadge: {
+    display: 'inline-block',
+    padding: '0.125rem 0.375rem',
+    background: '#e0e7ff',
+    color: '#4f46e5',
+    borderRadius: '4px',
+    fontSize: '0.625rem',
+    fontWeight: '600',
+    textTransform: 'none',
   },
   value: {
     fontSize: '1rem',
     fontWeight: '600',
+  },
+  hourlyRate: {
+    fontSize: '0.75rem',
+    color: '#9ca3af',
+    fontWeight: '500',
   },
   priceSection: {
     display: 'flex',

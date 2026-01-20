@@ -3,6 +3,7 @@ import { useWebSocket } from './hooks/useWebSocket';
 import Header from './components/Header';
 import ArbitrageCard from './components/ArbitrageCard';
 import FundingCard from './components/FundingCard';
+import FundingDetailModal from './components/FundingDetailModal';
 import LoadingSpinner from './components/LoadingSpinner';
 import './App.css';
 
@@ -13,6 +14,7 @@ function App() {
   const [exchangeRate, setExchangeRate] = useState(0);
   const [totalOpportunities, setTotalOpportunities] = useState(0);
   const [dataType, setDataType] = useState(null);
+  const [selectedSymbol, setSelectedSymbol] = useState(null);
 
   useEffect(() => {
     if (data && (data.type === 'arbitrage_update' || data.type === 'funding_update')) {
@@ -120,7 +122,11 @@ function App() {
               <div style={styles.grid}>
                 {opportunities.map((opportunity, index) => (
                   dataType === 'funding_update'
-                    ? <FundingCard key={`${opportunity.symbol}-${index}`} opportunity={opportunity} />
+                    ? <FundingCard
+                        key={`${opportunity.symbol}-${index}`}
+                        opportunity={opportunity}
+                        onClick={() => setSelectedSymbol(opportunity.symbol)}
+                      />
                     : <ArbitrageCard key={`${opportunity.symbol}-${index}`} opportunity={opportunity} />
                 ))}
               </div>
@@ -132,6 +138,13 @@ function App() {
       <footer style={styles.footer}>
         <p>Crypto Arbitrage Monitor - Real-time price tracking for Binance & Upbit</p>
       </footer>
+
+      {selectedSymbol && (
+        <FundingDetailModal
+          symbol={selectedSymbol}
+          onClose={() => setSelectedSymbol(null)}
+        />
+      )}
     </div>
   );
 }

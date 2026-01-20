@@ -22,39 +22,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 모니터링할 심볼 리스트 (무기한 선물)
-MONITORED_SYMBOLS = [
-    'BTC/USDT:USDT',
-    'ETH/USDT:USDT',
-    'SOL/USDT:USDT',
-    'XRP/USDT:USDT',
-    'DOGE/USDT:USDT',
-    'AVAX/USDT:USDT',
-    'LINK/USDT:USDT',
-    'ARB/USDT:USDT',
-    'OP/USDT:USDT',
-    'BERA/USDT:USDT',
-    'SUI/USDT:USDT',
-    '1000PEPE/USDT:USDT',
-    'WIF/USDT:USDT',
-    'NEAR/USDT:USDT',
-    'APT/USDT:USDT',
-    'FIL/USDT:USDT',
-    'TIA/USDT:USDT',
-    'SEI/USDT:USDT',
-    'INJ/USDT:USDT',
-    'JUP/USDT:USDT',
-]
-
 # 전역 인스턴스
 futures_manager: Optional[FuturesManager] = None
 funding_service: Optional[FundingArbitrageService] = None
+monitored_symbols: List[str] = []  # 동적으로 로드되는 심볼 리스트
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """애플리케이션 생명주기 관리"""
-    global futures_manager, funding_service
+    global futures_manager, funding_service, monitored_symbols
 
     # 시작 시 초기화
     logger.info("Initializing Funding Rate Arbitrage services...")
@@ -68,6 +45,20 @@ async def lifespan(app: FastAPI):
     await futures_manager.initialize()
 
     funding_service = FundingArbitrageService(futures_manager)
+
+    # 바이낸스 거래량 기준 상위 50개 심볼 로드
+    from app.models.funding import ExchangeType
+    binance_exchange = futures_manager.exchanges.get(ExchangeType.BINANCE)
+    if binance_exchange:
+        monitored_symbols = await binance_exchange.get_top_volume_symbols(limit=50)
+        logger.info(f"Loaded {len(monitored_symbols)} symbols by volume")
+    else:
+        # 폴백: 기본 심볼 리스트
+        monitored_symbols = [
+            'BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT', 'XRP/USDT:USDT',
+            'DOGE/USDT:USDT', 'AVAX/USDT:USDT', 'LINK/USDT:USDT', 'ARB/USDT:USDT',
+        ]
+        logger.warning("Using fallback symbol list")
 
     logger.info("Services initialized successfully")
 
@@ -138,10 +129,25 @@ async def get_exchanges():
 
 @app.get("/api/v1/symbols")
 async def get_symbols():
-    """모니터링 중인 심볼 목록"""
+    """모니터링 중인 심볼 목록 (거래량 순)"""
     return {
-        "symbols": MONITORED_SYMBOLS,
-        "count": len(MONITORED_SYMBOLS)
+        "symbols": monitored_symbols,
+        "count": len(monitored_symbols)
+    }
+
+
+@app.get("/api/v1/funding-rates/all/{symbol:path}")
+async def get_all_funding_rates(symbol: str):
+    """모든 거래소의 펀딩 레이트 조회"""
+    if not futures_manager:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    rates = await futures_manager.get_all_funding_rates(symbol)
+
+    return {
+        "symbol": symbol,
+        "rates": {k.value: v.model_dump(mode='json') for k, v in rates.items()},
+        "exchange_count": len(rates)
     }
 
 
@@ -162,21 +168,6 @@ async def get_funding_rate(exchange: str, symbol: str):
         raise HTTPException(status_code=404, detail="Funding rate not found")
 
     return rate
-
-
-@app.get("/api/v1/funding-rates/all/{symbol:path}")
-async def get_all_funding_rates(symbol: str):
-    """모든 거래소의 펀딩 레이트 조회"""
-    if not futures_manager:
-        raise HTTPException(status_code=503, detail="Service not initialized")
-
-    rates = await futures_manager.get_all_funding_rates(symbol)
-
-    return {
-        "symbol": symbol,
-        "rates": {k.value: v.model_dump(mode='json') for k, v in rates.items()},
-        "exchange_count": len(rates)
-    }
 
 
 @app.post("/api/v1/funding-arbitrage/calculate")
@@ -245,7 +236,7 @@ async def get_all_top_opportunities(
         raise HTTPException(status_code=503, detail="Service not initialized")
 
     opportunities = await funding_service.find_all_opportunities(
-        symbols=MONITORED_SYMBOLS,
+        symbols=monitored_symbols,
         default_position=position_size,
         default_leverage=leverage,
         default_hours=holding_hours,
@@ -267,7 +258,7 @@ async def websocket_endpoint(websocket: WebSocket):
     await handle_funding_websocket(
         websocket=websocket,
         funding_service=funding_service,
-        symbols=MONITORED_SYMBOLS,
+        symbols=monitored_symbols,
         update_interval=settings.price_update_interval
     )
 

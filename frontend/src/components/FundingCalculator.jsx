@@ -1,27 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ExchangeSelector from './ExchangeSelector';
 
-const SYMBOLS = [
-  { value: 'BTC/USDT:USDT', label: 'BTC/USDT' },
-  { value: 'ETH/USDT:USDT', label: 'ETH/USDT' },
-  { value: 'SOL/USDT:USDT', label: 'SOL/USDT' },
-  { value: 'XRP/USDT:USDT', label: 'XRP/USDT' },
-  { value: 'DOGE/USDT:USDT', label: 'DOGE/USDT' },
-  { value: 'AVAX/USDT:USDT', label: 'AVAX/USDT' },
-  { value: 'LINK/USDT:USDT', label: 'LINK/USDT' },
-  { value: 'ARB/USDT:USDT', label: 'ARB/USDT' },
-  { value: 'OP/USDT:USDT', label: 'OP/USDT' },
-];
-
 export default function FundingCalculator({ onCalculate, isLoading }) {
+  const [symbols, setSymbols] = useState([]);
   const [inputs, setInputs] = useState({
     symbol: 'BTC/USDT:USDT',
     longExchange: 'binance',
-    shortExchange: 'hyperliquid',
+    shortExchange: 'lighter',
     positionSize: 10000,
     leverage: 2,
     holdingHours: 24,
   });
+
+  // API에서 심볼 목록 가져오기
+  useEffect(() => {
+    const fetchSymbols = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/api/v1/symbols');
+        if (response.ok) {
+          const data = await response.json();
+          const symbolList = data.symbols.map(s => ({
+            value: s,
+            label: s.replace('/USDT:USDT', '')
+          }));
+          setSymbols(symbolList);
+        }
+      } catch (err) {
+        console.error('Failed to fetch symbols:', err);
+        // 폴백 심볼 리스트
+        setSymbols([
+          { value: 'BTC/USDT:USDT', label: 'BTC' },
+          { value: 'ETH/USDT:USDT', label: 'ETH' },
+        ]);
+      }
+    };
+    fetchSymbols();
+  }, []);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -45,7 +59,7 @@ export default function FundingCalculator({ onCalculate, isLoading }) {
               onChange={(e) => updateInput('symbol', e.target.value)}
               style={styles.select}
             >
-              {SYMBOLS.map(s => (
+              {symbols.map(s => (
                 <option key={s.value} value={s.value}>{s.label}</option>
               ))}
             </select>

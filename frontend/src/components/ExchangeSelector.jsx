@@ -3,7 +3,6 @@ import React from 'react';
 const EXCHANGES = [
   { id: 'binance', name: 'Binance', color: '#F0B90B' },
   { id: 'bybit', name: 'Bybit', color: '#F7A600' },
-  { id: 'hyperliquid', name: 'Hyperliquid', color: '#00D1FF' },
   { id: 'lighter', name: 'Lighter', color: '#7C3AED' },
 ];
 
