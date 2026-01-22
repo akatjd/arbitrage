@@ -1,15 +1,22 @@
-import React from 'react';
-
 const EXCHANGES = [
   { id: 'binance', name: 'Binance', color: '#F0B90B' },
   { id: 'bybit', name: 'Bybit', color: '#F7A600' },
+  { id: 'hyperliquid', name: 'Hyperliquid', color: '#50E3C2' },
   { id: 'lighter', name: 'Lighter', color: '#7C3AED' },
 ];
 
-export default function ExchangeSelector({ value, onChange, label, excludeValue }) {
-  const filteredExchanges = excludeValue
-    ? EXCHANGES.filter(ex => ex.id !== excludeValue)
-    : EXCHANGES;
+export default function ExchangeSelector({ value, onChange, label, excludeValue, availableExchanges }) {
+  let filteredExchanges = EXCHANGES;
+
+  // 지원하는 거래소만 필터링
+  if (availableExchanges && availableExchanges.length > 0) {
+    filteredExchanges = EXCHANGES.filter(ex => availableExchanges.includes(ex.id));
+  }
+
+  // 상대방 거래소 제외
+  if (excludeValue) {
+    filteredExchanges = filteredExchanges.filter(ex => ex.id !== excludeValue);
+  }
 
   return (
     <div style={styles.container}>

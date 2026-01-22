@@ -136,6 +136,33 @@ async def get_symbols():
     }
 
 
+@app.get("/api/v1/symbol-exchanges")
+async def get_exchanges_for_symbol(symbol: str = Query(..., description="Symbol to check")):
+    """특정 심볼을 지원하는 거래소 목록 조회"""
+    if not futures_manager:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    supported_exchanges = []
+
+    for exchange_type, exchange in futures_manager.exchanges.items():
+        try:
+            rate = await exchange.fetch_funding_rate(symbol)
+            if rate and rate.funding_rate is not None:
+                supported_exchanges.append({
+                    "id": exchange_type.value,
+                    "name": exchange.name,
+                    "funding_interval": futures_manager.get_funding_interval(exchange_type)
+                })
+        except Exception:
+            pass
+
+    return {
+        "symbol": symbol,
+        "exchanges": supported_exchanges,
+        "count": len(supported_exchanges)
+    }
+
+
 @app.get("/api/v1/funding-rates/all/{symbol:path}")
 async def get_all_funding_rates(symbol: str):
     """모든 거래소의 펀딩 레이트 조회"""

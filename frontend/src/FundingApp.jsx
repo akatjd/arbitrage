@@ -58,14 +58,17 @@ function FundingApp() {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        if (response.status === 404) {
+          throw new Error('선택한 거래소에서 해당 거래쌍을 지원하지 않습니다.\n다른 거래소 또는 거래쌍을 선택해 주세요.');
+        }
+        throw new Error(`오류가 발생했습니다. (코드: ${response.status})`);
       }
 
       const result = await response.json();
       setCalculationResult(result);
     } catch (err) {
       console.error('Calculation error:', err);
-      alert(`Calculation failed: ${err.message}`);
+      alert(err.message);
     } finally {
       setIsCalculating(false);
     }

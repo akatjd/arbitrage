@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import ExchangeSelector from './ExchangeSelector';
 
 export default function FundingCalculator({ onCalculate, isLoading }) {
   const [symbols, setSymbols] = useState([]);
+  const [availableExchanges, setAvailableExchanges] = useState([]);
+  const [isLoadingExchanges, setIsLoadingExchanges] = useState(false);
   const [inputs, setInputs] = useState({
     symbol: 'BTC/USDT:USDT',
     longExchange: 'binance',
-    shortExchange: 'lighter',
+    shortExchange: 'bybit',
     positionSize: 10000,
     leverage: 2,
     holdingHours: 24,
@@ -37,6 +39,67 @@ export default function FundingCalculator({ onCalculate, isLoading }) {
     fetchSymbols();
   }, []);
 
+  // 심볼 변경 시 지원 거래소 목록 가져오기
+  useEffect(() => {
+    let isCancelled = false;
+    const currentSymbol = inputs.symbol;
+
+    const fetchExchangesForSymbol = async () => {
+      if (!currentSymbol) return;
+
+      setIsLoadingExchanges(true);
+      try {
+        const response = await fetch(
+          `http://localhost:8000/api/v1/symbol-exchanges?symbol=${encodeURIComponent(currentSymbol)}`
+        );
+        if (response.ok && !isCancelled) {
+          const data = await response.json();
+          // 응답이 현재 선택된 심볼과 일치하는지 확인
+          if (data.symbol !== currentSymbol) return;
+
+          const exchangeIds = data.exchanges.map(ex => ex.id);
+          setAvailableExchanges(exchangeIds);
+
+          // 현재 선택된 거래소가 지원되지 않으면 변경
+          if (exchangeIds.length >= 2) {
+            setInputs(prev => {
+              let newLong = prev.longExchange;
+              let newShort = prev.shortExchange;
+
+              if (!exchangeIds.includes(prev.longExchange)) {
+                newLong = exchangeIds[0];
+              }
+              if (!exchangeIds.includes(prev.shortExchange) || newShort === newLong) {
+                newShort = exchangeIds.find(ex => ex !== newLong) || exchangeIds[1];
+              }
+
+              return {
+                ...prev,
+                longExchange: newLong,
+                shortExchange: newShort
+              };
+            });
+          }
+        }
+      } catch (err) {
+        if (!isCancelled) {
+          console.error('Failed to fetch exchanges for symbol:', err);
+          setAvailableExchanges([]);
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingExchanges(false);
+        }
+      }
+    };
+
+    fetchExchangesForSymbol();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [inputs.symbol]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     onCalculate(inputs);
@@ -66,13 +129,29 @@ export default function FundingCalculator({ onCalculate, isLoading }) {
           </div>
         </div>
 
+        {isLoadingExchanges && (
+          <div style={styles.loadingText}>거래소 목록 조회 중...</div>
+        )}
+
+        {!isLoadingExchanges && availableExchanges.length > 0 && (
+          <div style={styles.exchangeInfo}>
+            지원 거래소: {availableExchanges.length}개
+          </div>
+        )}
+
+        {!isLoadingExchanges && availableExchanges.length < 2 && (
+          <div style={styles.warningText}>
+            이 거래쌍은 2개 이상의 거래소에서 지원되지 않아 아비트리지가 불가능합니다.
+          </div>
+        )}
+
         <div style={styles.row}>
           <div style={styles.field}>
             <ExchangeSelector
               label="Long Exchange"
               value={inputs.longExchange}
               onChange={(v) => updateInput('longExchange', v)}
-              excludeValue={inputs.shortExchange}
+              availableExchanges={availableExchanges}
             />
           </div>
           <div style={styles.field}>
@@ -80,10 +159,16 @@ export default function FundingCalculator({ onCalculate, isLoading }) {
               label="Short Exchange"
               value={inputs.shortExchange}
               onChange={(v) => updateInput('shortExchange', v)}
-              excludeValue={inputs.longExchange}
+              availableExchanges={availableExchanges}
             />
           </div>
         </div>
+
+        {inputs.longExchange === inputs.shortExchange && (
+          <div style={styles.warningText}>
+            Long과 Short 거래소가 동일합니다. 서로 다른 거래소를 선택해 주세요.
+          </div>
+        )}
 
         <div style={styles.row}>
           <div style={styles.field}>
@@ -129,9 +214,9 @@ export default function FundingCalculator({ onCalculate, isLoading }) {
           type="submit"
           style={{
             ...styles.button,
-            opacity: isLoading ? 0.7 : 1,
+            opacity: isLoading || availableExchanges.length < 2 || inputs.longExchange === inputs.shortExchange ? 0.7 : 1,
           }}
-          disabled={isLoading}
+          disabled={isLoading || availableExchanges.length < 2 || inputs.longExchange === inputs.shortExchange}
         >
           {isLoading ? 'Calculating...' : 'Calculate Arbitrage'}
         </button>
@@ -199,5 +284,22 @@ const styles = {
     borderRadius: '8px',
     cursor: 'pointer',
     transition: 'transform 0.2s, box-shadow 0.2s',
+  },
+  loadingText: {
+    fontSize: '0.875rem',
+    color: '#6b7280',
+    fontStyle: 'italic',
+  },
+  exchangeInfo: {
+    fontSize: '0.875rem',
+    color: '#10b981',
+    fontWeight: '500',
+  },
+  warningText: {
+    fontSize: '0.875rem',
+    color: '#ef4444',
+    padding: '0.75rem',
+    background: '#fee2e2',
+    borderRadius: '8px',
   },
 };
